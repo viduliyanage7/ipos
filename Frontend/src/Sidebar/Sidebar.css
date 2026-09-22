@@ -1,0 +1,51 @@
+.sidebar {
+  width: 280px;
+  height: 100vh;
+  background-color: #f7f8fa;
+  position: fixed;
+  top: 0;
+  left: 0;
+  padding: 20px 0px 20px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar img {
+  width: 50%;
+}
+
+.sidebar h2 {
+  margin-top: 0;
+}
+
+.sidebar ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.sidebar ul li {
+  padding: 0;
+  height: 50px;
+  cursor: pointer;
+}
+
+/* Remove hover effect */
+.sidebar ul li:hover {
+  background-color: inherit; /* Or remove this rule entirely */
+  color: #3B5A3B;
+}
+
+/* Remove underline from links */
+.sidebar a {
+  text-decoration: none;
+  color: inherit; /* Ensures the link color inherits from the parent */
+}
+
+/* Ensure no underline on hover */
+.sidebar a:hover {
+  text-decoration: none;
+}
+
+.sidebar p {
+  margin: 0; /* Remove margin if needed */
+}
