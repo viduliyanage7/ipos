@@ -1,73 +1,83 @@
-import React, { useEffect, useRef, useState } from 'react'
-import axios from 'axios'
-
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
 
 const Inventory = () => {
+  const [categories, setCategories] = useState([]);
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  const [categories, setCategories] = useState([])
-  const [search, setSearch] = useState('')
-  const [modal, setModal] = useState(null)
-  const [toast, setToast] = useState(null)
+  const [modalQty, setModalQty] = useState(1);
+  const inputRef = useRef(null);
 
-  const [modalQty, setModalQty] = useState(1)
-  const inputRef = useRef(null)
-
-  const openModal = (product) => { setModal({ product }); setModalQty(1) }
-  const closeModal = () => { setModal(null); setModalQty(1) }
+  const openModal = (product) => {
+    setModal({ product });
+    setModalQty(1);
+  };
+  const closeModal = () => {
+    setModal(null);
+    setModalQty(1);
+  };
 
   const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2200)
-  }
-
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
 
   const handleModalKeyDown = (e) => {
-    if (e.key === 'Enter') confirmAdd()
-    if (e.key === 'Escape') closeModal()
-  }
+    if (e.key === "Enter") confirmAdd();
+    if (e.key === "Escape") closeModal();
+  };
 
   const confirmAdd = async () => {
-    if (!modal) return
-    const { product } = modal
-    const qty = Math.max(1, parseInt(modalQty) || 1)
+    if (!modal) return;
+    const { product } = modal;
+    const qty = Math.max(1, parseInt(modalQty) || 1);
 
-    const response = await axios.post('http://localhost:3002/api/inventory/add', {
-      product_id: product.id,
-      quantity: qty
-    })
+    const response = await axios.post(
+      "http://localhost:3002/api/inventory/add",
+      {
+        product_id: product.id,
+        quantity: qty,
+      },
+    );
 
     if (response.status === 200) {
-      showToast(`${product.productName} × ${qty} added`)
+      showToast(`${product.productName} × ${qty} added`);
     } else {
-      showToast(`Failed to add ${product.productName}`)
+      showToast(`Failed to add ${product.productName}`);
     }
 
-    fetchData()
-    closeModal()
-  }
+    fetchData();
+    closeModal();
+  };
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   useEffect(() => {
     if (modal && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
+      inputRef.current.focus();
+      inputRef.current.select();
     }
-  }, [modal])
+  }, [modal]);
 
   const fetchData = async () => {
     try {
-      const response = await axios.get('http://localhost:3002/api/create-bill/products')
-      setCategories(response.data.data)
+      const response = await axios.get(
+        "http://localhost:3002/api/inventory/products",
+      );
+      setCategories(response.data.data);
     } catch (err) {
-      console.error('Failed to fetch products:', err)
+      console.error("Failed to fetch products:", err);
     }
-  }
+  };
 
   const allProducts = categories.flatMap((cat) => {
-    const ids = cat.productIds.split(',')
-    const names = cat.productNames.split(',')
-    const stocks = cat.productStock ? cat.productStock.split(',') : []
+    const ids = cat.productIds.split(",");
+    const names = cat.productNames.split(",");
+    const stocks = cat.productStock ? cat.productStock.split(",") : [];
 
     return names.map((name, idx) => ({
       id: `${ids[idx]}`,
@@ -76,26 +86,24 @@ const Inventory = () => {
       category_name: cat.category_name,
       stock: parseInt(stocks[idx]) || 0,
       price: undefined,
-    }))
-  })
+    }));
+  });
 
   const filtered = allProducts.filter((p) =>
-    p.productName.toLowerCase().includes(search.toLowerCase())
-  )
-
+    p.productName.toLowerCase().includes(search.toLowerCase()),
+  );
 
   const grouped = filtered.reduce((acc, product) => {
-    if (!acc[product.category_name]) acc[product.category_name] = []
-    acc[product.category_name].push(product)
-    return acc
-  }, {})
+    if (!acc[product.category_name]) acc[product.category_name] = [];
+    acc[product.category_name].push(product);
+    return acc;
+  }, {});
 
   const handleProductClick = (product) => {
-    openModal(product)
-  }
+    openModal(product);
+  };
   return (
     <div className="w-full min-h-screen bg-slate-50 font-sans">
-
       <div className="sticky top-0 z-50 bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <svg
@@ -111,7 +119,9 @@ const Inventory = () => {
               d="M3 7l9-4 9 4M3 7v10l9 4m-9-14l9 4m9-4l-9 4m9-4v10l-9 4m0-10v10"
             />
           </svg>
-          <span className="font-semibold text-slate-900 text-base">Inventory</span>
+          <span className="font-semibold text-slate-900 text-base">
+            Inventory
+          </span>
         </div>
       </div>
 
@@ -122,14 +132,17 @@ const Inventory = () => {
           </div>
         ) : (
           Object.entries(grouped).map(([catName, products]) => (
-            <div key={catName} className="bg-white border border-slate-200 rounded-xl p-4">
+            <div
+              key={catName}
+              className="bg-white border border-slate-200 rounded-xl p-4"
+            >
               <p className="text-[13px] font-bold text-slate-400 uppercase tracking-widest mb-3">
                 {catName}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {products.map((product) => {
                   // const selected = isInCart(product.id)
-                  const lowStock = product.stock > 0 && product.stock <= 5
+                  const lowStock = product.stock >= 0 && product.stock <= 5;
 
                   return (
                     <button
@@ -150,7 +163,7 @@ const Inventory = () => {
                         </span>
                       )}
                     </button>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -167,8 +180,12 @@ const Inventory = () => {
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl w-80 z-[201] overflow-hidden shadow-2xl">
             <div className="px-5 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between">
               <div>
-                <p className="text-sm font-bold text-slate-900">{modal.product.productName}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{modal.product.category_name}</p>
+                <p className="text-sm font-bold text-slate-900">
+                  {modal.product.productName}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {modal.product.category_name}
+                </p>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {modal.product.stock} in stock
                 </p>
@@ -176,38 +193,52 @@ const Inventory = () => {
               <button
                 onClick={closeModal}
                 className="w-7 h-7 flex items-center justify-center rounded-md bg-slate-100 text-slate-500 hover:bg-slate-200 transition cursor-pointer text-base border-none"
-              >×</button>
+              >
+                ×
+              </button>
             </div>
 
             <div className="p-5">
-              <p className="text-xs font-medium text-slate-500 mb-2.5">Quantity</p>
+              <p className="text-xs font-medium text-slate-500 mb-2.5">
+                Quantity
+              </p>
 
               <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden bg-slate-50 mb-4">
                 <button
                   onClick={() => setModalQty((q) => Math.max(1, q - 1))}
                   className="flex-1 h-12 flex items-center justify-center text-xl text-slate-500 border-r border-slate-200 bg-transparent hover:bg-slate-100 transition cursor-pointer border-none"
-                >−</button>
+                >
+                  −
+                </button>
                 <input
                   ref={inputRef}
                   type="number"
                   value={modalQty}
                   min={1}
                   max={modal.product.stock}
-                  onChange={(e) => setModalQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) =>
+                    setModalQty(Math.max(1, parseInt(e.target.value) || 1))
+                  }
                   onKeyDown={handleModalKeyDown}
                   className="w-[200px] flex-[2] h-12 text-center text-xl font-bold text-slate-900 bg-white border-none outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <button
-                  onClick={() => setModalQty((q) => Math.min(modal.product.stock, q + 1))}
+                  onClick={() =>
+                    setModalQty((q) => Math.min(modal.product.stock, q + 1))
+                  }
                   className="flex-1 h-12 flex items-center justify-center text-xl text-slate-500 border-l border-slate-200 bg-transparent hover:bg-slate-100 transition cursor-pointer border-none"
-                >+</button>
+                >
+                  +
+                </button>
               </div>
 
               <div className="flex gap-2">
                 <button
                   onClick={closeModal}
                   className="flex-1 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-500 text-sm font-medium hover:bg-slate-50 transition cursor-pointer"
-                >Cancel</button>
+                >
+                  Cancel
+                </button>
                 <button
                   onClick={confirmAdd}
                   className="flex-[2] py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold flex items-center justify-center gap-1.5 hover:bg-slate-800 transition cursor-pointer border-none"
@@ -229,9 +260,8 @@ const Inventory = () => {
           {toast}
         </div>
       )}
-
     </div>
-  )
-}
+  );
+};
 
-export default Inventory
+export default Inventory;

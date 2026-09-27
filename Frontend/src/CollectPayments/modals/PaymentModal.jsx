@@ -7,11 +7,29 @@ const PaymentModal = ({ order, onClose, onConfirm }) => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  const amountDue = Number(order.total_due) || 0;
-  const lastBillsTotal = Number(order.pre_bills_total) || 0;
+  // Current bill
   const currentBill = Number(order.bill_total) || 0;
-  const amountPaid = parseFloat(amount);
-  const hasValidAmount = amount !== "" && !isNaN(amountPaid) && amountPaid >= 0;
+
+  // Previous bill information
+  const previousBillTotal = Number(order.previous_bill_total) || 0;
+  const previousPaidTotal = Number(order.previous_paid_total) || 0;
+
+  // Outstanding amount from previous bills
+  const previousBalance =
+    Number(order.previous_balance) ||
+    Math.max(previousBillTotal - previousPaidTotal, 0);
+
+  // Total amount customer currently owes
+  const amountDue =
+    Number(order.total_due) ||
+    Number(order.total_payable) ||
+    currentBill + previousBalance;
+
+  const amountPaid = Number.parseFloat(amount);
+
+  const hasValidAmount =
+    amount !== "" && !Number.isNaN(amountPaid) && amountPaid >= 0;
+
   const balance = hasValidAmount ? amountDue - amountPaid : null;
 
   const handleSubmit = async (e) => {
@@ -22,8 +40,16 @@ const PaymentModal = ({ order, onClose, onConfirm }) => {
       return;
     }
 
+    if (amountPaid > amountDue) {
+      setError(
+        `Payment cannot exceed the amount due of ${formatCurrency(amountDue)}.`,
+      );
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
+
     try {
       await onConfirm(order, amountPaid);
     } catch (err) {
@@ -42,15 +68,18 @@ const PaymentModal = ({ order, onClose, onConfirm }) => {
         className="w-full max-w-md rounded-2xl border border-slate-100 bg-white p-8 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50">
               <Wallet className="h-6 w-6 text-emerald-600" />
             </div>
+
             <div>
               <h2 className="text-lg font-bold text-slate-900">
                 Collect payment
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Order #{order.order_number}
               </p>
@@ -58,89 +87,120 @@ const PaymentModal = ({ order, onClose, onConfirm }) => {
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        {lastBillsTotal > 0 && (
-          <div className="mt-6 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
-            <span className="text-sm font-medium text-slate-500">
-              Last Bill
-            </span>
-            <span className="text-base font-bold text-slate-900">
-              {formatCurrency(lastBillsTotal)}
-            </span>
+
+        {/* Previous outstanding balance */}
+        {previousBalance > 0 && (
+          <div className="mt-6 rounded-xl border border-amber-100 bg-amber-50 px-4 py-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-amber-700">
+                Previous balance
+              </span>
+
+              <span className="text-base font-bold text-amber-800">
+                {formatCurrency(previousBalance)}
+              </span>
+            </div>
+
+            {/* Optional breakdown */}
+            {previousBillTotal > 0 && (
+              <div className="mt-2 space-y-1 text-xs text-amber-700">
+                <div className="flex justify-between">
+                  <span>Previous bills</span>
+                  <span>{formatCurrency(previousBillTotal)}</span>
+                </div>
+
+                {previousPaidTotal > 0 && (
+                  <div className="flex justify-between">
+                    <span>Already paid</span>
+                    <span>- {formatCurrency(previousPaidTotal)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {currentBill !== amountDue && (
-          <div className="mt-6 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
-            <span className="text-sm font-medium text-slate-500">
-              Current Bill
-            </span>
-            <span className="text-base font-bold text-slate-900">
-              {formatCurrency(currentBill)}
-            </span>
-          </div>
-        )}
+        {/* Current bill */}
+        <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+          <span className="text-sm font-medium text-slate-500">
+            Current Bill
+          </span>
 
-        {/* Amount due summary */}
-        <div className="mt-6 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
-          <span className="text-sm font-medium text-slate-500">Amount due</span>
           <span className="text-base font-bold text-slate-900">
+            {formatCurrency(currentBill)}
+          </span>
+        </div>
+
+        {/* Total amount due */}
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+          <span className="text-sm font-semibold text-emerald-700">
+            Total Amount Due
+          </span>
+
+          <span className="text-lg font-bold text-emerald-800">
             {formatCurrency(amountDue)}
           </span>
         </div>
 
+        {/* Payment form */}
         <form onSubmit={handleSubmit}>
           <label className="mt-6 block text-sm font-medium text-slate-700">
             Amount paid by customer
           </label>
+
           <input
             type="number"
             step="0.01"
             min="0"
+            max={amountDue}
             autoFocus
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
-              if (error) setError(null);
+
+              if (error) {
+                setError(null);
+              }
             }}
             placeholder="e.g. 1500.00"
             className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
           />
 
-          {/* Live balance feedback */}
+          {/* Remaining balance */}
           {hasValidAmount && (
             <div
               className={`mt-3 rounded-xl px-4 py-3 text-sm ${
                 balance > 0
                   ? "border border-amber-200 bg-amber-50 text-amber-700"
-                  : balance < 0
-                    ? "border border-sky-200 bg-sky-50 text-sky-700"
-                    : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : balance === 0
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border border-red-200 bg-red-50 text-red-700"
               }`}
             >
               {balance > 0 ? (
                 <>
                   <span className="font-semibold">
-                    {formatCurrency(balance)} due balance
+                    {formatCurrency(balance)}
                   </span>{" "}
-                  will be added to a future bill.
+                  remaining balance.
                 </>
-              ) : balance < 0 ? (
-                <>
-                  <span className="font-semibold">
-                    {formatCurrency(Math.abs(balance))} change
-                  </span>{" "}
-                  should be returned to the customer.
-                </>
-              ) : (
+              ) : balance === 0 ? (
                 <span className="font-semibold">
                   Bill fully paid. No balance remaining.
                 </span>
+              ) : (
+                <>
+                  <span className="font-semibold">
+                    Payment exceeds the amount due.
+                  </span>
+                </>
               )}
             </div>
           )}
@@ -149,7 +209,7 @@ const PaymentModal = ({ order, onClose, onConfirm }) => {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || !hasValidAmount || amountPaid > amountDue}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Saving…" : "Confirm payment"}
