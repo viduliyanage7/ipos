@@ -10,9 +10,19 @@ const Products = (props) => {
   const [modalQty, setModalQty] = useState(1);
   const inputRef = useRef(null);
 
+  const [customModal, setCustomModal] = useState(false);
+  const [custom, setCustom] = useState({ name: "", qty: 1, price: "" });
+  const [customError, setCustomError] = useState("");
+  const customNameRef = useRef(null);
+
   useEffect(() => {
+    setCart([]);
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (customModal && customNameRef.current) customNameRef.current.focus();
+  }, [customModal]);
 
   useEffect(() => {
     if (modal && inputRef.current) {
@@ -91,6 +101,45 @@ const Products = (props) => {
     closeModal();
   };
 
+  const openCustomModal = () => {
+    setCustom({ name: "", qty: 1, price: "" });
+    setCustomError("");
+    setCustomModal(true);
+  };
+  const closeCustomModal = () => setCustomModal(false);
+
+  const confirmCustomAdd = () => {
+    const name = custom.name.trim();
+    const qty = parseInt(custom.qty);
+    const price = parseFloat(custom.price);
+
+    if (!name) return setCustomError("Enter a product name.");
+    if (!qty || qty < 1) return setCustomError("Quantity must be at least 1.");
+    if (isNaN(price) || price <= 0)
+      return setCustomError("Enter a valid price greater than 0.");
+
+    setCart((prev) => [
+      ...prev,
+      {
+        id: `custom-${Date.now()}`,
+        productName: name,
+        category_id: null,
+        category_name: "Custom item",
+        stock: null,
+        qty,
+        price,
+        isCustom: true,
+      },
+    ]);
+    showToast(`${name} × ${qty} added`);
+    closeCustomModal();
+  };
+
+  const handleCustomKeyDown = (e) => {
+    if (e.key === "Enter") confirmCustomAdd();
+    if (e.key === "Escape") closeCustomModal();
+  };
+
   const handleModalKeyDown = (e) => {
     if (e.key === "Enter") confirmAdd();
     if (e.key === "Escape") closeModal();
@@ -151,28 +200,47 @@ const Products = (props) => {
             Products
           </span>
         </div>
-        <button
-          onClick={() => setCartOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 transition-colors cursor-pointer"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            viewBox="0 0 24 24"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openCustomModal}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 transition-colors cursor-pointer"
           >
-            <circle cx="9" cy="21" r="1" />
-            <circle cx="20" cy="21" r="1" />
-            <path d="M1 1h4l2.68 13.39a2 2 0 001.99 1.61H19a2 2 0 001.99-1.73L22 6H6" />
-          </svg>
-          Cart
-          {cart.length > 0 && (
-            <span className="bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-px min-w-[20px] text-center">
-              {cart.length}
-            </span>
-          )}
-        </button>
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Custom Item
+          </button>
+
+          <button
+            onClick={() => setCartOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 transition-colors cursor-pointer"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 001.99 1.61H19a2 2 0 001.99-1.73L22 6H6" />
+            </svg>
+            Cart
+            {cart.length > 0 && (
+              <span className="bg-red-500 text-white text-xs font-semibold rounded-full px-1.5 py-px min-w-[20px] text-center">
+                {cart.length}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       <div></div>
@@ -343,6 +411,106 @@ const Products = (props) => {
                     <circle cx="20" cy="21" r="1" />
                     <path d="M1 1h4l2.68 13.39a2 2 0 001.99 1.61H19a2 2 0 001.99-1.73L22 6H6" />
                   </svg>
+                  Add to Cart
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {customModal && (
+        <>
+          <div
+            onClick={closeCustomModal}
+            className="fixed inset-0 bg-black/45 z-[200]"
+          />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl w-80 z-[201] overflow-hidden shadow-2xl">
+            <div className="px-5 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-900">Custom item</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  For a product that isn't in the system
+                </p>
+              </div>
+              <button
+                onClick={closeCustomModal}
+                className="w-7 h-7 flex items-center justify-center rounded-md bg-slate-100 text-slate-500 hover:bg-slate-200 transition cursor-pointer text-base border-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 flex flex-col gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                  Product name
+                </label>
+                <input
+                  ref={customNameRef}
+                  type="text"
+                  value={custom.name}
+                  onChange={(e) =>
+                    setCustom({ ...custom, name: e.target.value })
+                  }
+                  onKeyDown={handleCustomKeyDown}
+                  placeholder="e.g. 500g CTC"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-300"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={custom.qty}
+                    onChange={(e) =>
+                      setCustom({ ...custom, qty: e.target.value })
+                    }
+                    onKeyDown={handleCustomKeyDown}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-300"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                    Unit price
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={custom.price}
+                    onChange={(e) =>
+                      setCustom({ ...custom, price: e.target.value })
+                    }
+                    onKeyDown={handleCustomKeyDown}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-300"
+                  />
+                </div>
+              </div>
+
+              <div className="h-4">
+                {customError && (
+                  <p className="text-xs text-red-600">{customError}</p>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={closeCustomModal}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-500 text-sm font-medium hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmCustomAdd}
+                  className="flex-[2] py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition cursor-pointer border-none"
+                >
                   Add to Cart
                 </button>
               </div>

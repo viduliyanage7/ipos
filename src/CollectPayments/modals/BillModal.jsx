@@ -1,9 +1,36 @@
-import React from "react";
-import { X, Receipt, CheckCircle2 } from "lucide-react";
+import React, { useState } from "react";
+import { X, Receipt, CheckCircle2, Printer } from "lucide-react";
 import { formatDate, formatCurrency } from "./formatters";
+import { buildReceiptHtml } from "./receiptTemplate";
 
 const BillModal = ({ receipt, onClose }) => {
   const { order, amountDue, amountPaid, balance } = receipt;
+
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState("");
+
+  const handlePrint = async () => {
+    setPrintError("");
+    setPrinting(true);
+    try {
+      const html = buildReceiptHtml(receipt /*, { name: "My Shop", ... } */);
+      // Omit deviceName to use the OS default printer, or pass the exact
+      // name returned by window.electronAPI.getPrinters() to target a
+      // specific thermal printer.
+      const result = await window.electronAPI.printReceipt(html);
+      if (!result?.success && !result?.cancelled) {
+        setPrintError(
+          result?.error
+            ? `Print failed: ${result.error}`
+            : "Print failed. Check the printer connection.",
+        );
+      }
+    } catch (err) {
+      setPrintError("Could not reach the printer service.");
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   return (
     <div
@@ -78,8 +105,8 @@ const BillModal = ({ receipt, onClose }) => {
             balance > 0
               ? "border border-amber-200 bg-amber-50 text-amber-700"
               : balance < 0
-              ? "border border-sky-200 bg-sky-50 text-sky-700"
-              : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                ? "border border-sky-200 bg-sky-50 text-sky-700"
+                : "border border-emerald-200 bg-emerald-50 text-emerald-700"
           }`}
         >
           {balance > 0 ? (
@@ -101,12 +128,33 @@ const BillModal = ({ receipt, onClose }) => {
           )}
         </div>
 
-        <button
-          onClick={onClose}
-          className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
-        >
-          Done
-        </button>
+        {printError && (
+          <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5 text-xs text-red-600">
+            {printError}
+          </div>
+        )}
+
+        <div className="mt-7 flex gap-3">
+          <button
+            onClick={handlePrint}
+            disabled={printing}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            {printing ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            {printing ? "Printing..." : "Print bill"}
+          </button>
+
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700"
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

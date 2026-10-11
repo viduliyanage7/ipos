@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { UserPlus, X, User, Phone, Car, MapPin } from "@phosphor-icons/react";
+import {
+  UserPlus,
+  X,
+  User,
+  Phone,
+  Car,
+  MapPin,
+  Question,
+} from "@phosphor-icons/react";
 import axios from "axios";
 
 const CustomerRegistration = (props) => {
@@ -10,6 +18,7 @@ const CustomerRegistration = (props) => {
   const [location, setLocation] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [confirmModal, setConfirmModal] = useState(false);
 
   const showError = (msg) => {
     setError(msg);
@@ -35,7 +44,8 @@ const CustomerRegistration = (props) => {
       );
       if (response.data.status === "Success") {
         setCustomer(response.data.data);
-        handleVerification();
+        // Instead of jumping straight to OTP, confirm with the user first.
+        setConfirmModal(true);
       } else {
         showError(response.data.message || "Registration failed");
       }
@@ -48,6 +58,52 @@ const CustomerRegistration = (props) => {
       setLoading(false);
     }
   };
+
+  const handleConfirmYes = () => {
+    setConfirmModal(false);
+    handleVerification();
+  };
+
+  const handleConfirmNo = () => {
+    setConfirmModal(false);
+    // Customer registered but chose not to verify right now.
+    setRegModal(false);
+  };
+
+  if (confirmModal) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
+        <div className="w-full max-w-xs bg-white rounded-2xl border border-gray-100 p-6 shadow-xl">
+          <div className="flex items-center justify-center w-10 h-10 bg-amber-50 rounded-xl mb-4">
+            <Question size={20} weight="duotone" className="text-amber-600" />
+          </div>
+          <h2 className="text-base font-semibold text-gray-800 mb-1">
+            Verify this customer?
+          </h2>
+          <p className="text-sm text-gray-400 mb-5">
+            {name.trim() || "This customer"} was registered successfully. Would
+            you like to send an OTP to verify them now?
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleConfirmNo}
+              className="flex-1 h-10 border border-gray-200 hover:bg-gray-50 text-gray-600
+                         text-sm rounded-lg transition-colors duration-150"
+            >
+              No, skip
+            </button>
+            <button
+              onClick={handleConfirmYes}
+              className="flex-1 h-10 bg-emerald-600 hover:bg-emerald-700 text-white
+                         text-sm font-medium rounded-lg transition-colors duration-150"
+            >
+              Yes, verify
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">

@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { MagnifyingGlass, UserPlus, Phone, X } from "@phosphor-icons/react";
+import {
+  MagnifyingGlass,
+  UserPlus,
+  Phone,
+  X,
+  Question,
+} from "@phosphor-icons/react";
 import axios from "axios";
 import CustomerRegistration from "./modals/CustomerRegistration";
 import CustomerVerification from "./modals/CustomerVerification";
@@ -13,6 +19,7 @@ const CustomerSearch = (props) => {
 
   const [regModal, setRegModal] = useState(null);
   const [otpModal, setOtpModal] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   const showError = (msg) => {
     setError(msg);
@@ -32,7 +39,9 @@ const CustomerSearch = (props) => {
       if (response.data.data) {
         setCustomer(response.data.data);
         if (response.data.data.is_verified === 0) {
-          setOtpModal(true);
+          // Ask the user whether they want to verify this customer
+          // before jumping straight into the OTP flow.
+          setConfirmModal(true);
         } else {
           nextStep();
         }
@@ -49,6 +58,17 @@ const CustomerSearch = (props) => {
     setOtpModal(true);
   };
 
+  const handleConfirmYes = () => {
+    setConfirmModal(false);
+    setOtpModal(true);
+  };
+
+  const handleConfirmNo = () => {
+    setConfirmModal(false);
+    // Customer chose not to verify right now — continue without OTP.
+    nextStep();
+  };
+
   return (
     <div className="flex items-center justify-center h-full w-full bg-gray-50">
       {regModal && (
@@ -59,6 +79,39 @@ const CustomerSearch = (props) => {
           setRegModal={setRegModal}
           handleVerification={handleVerification}
         />
+      )}
+
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 w-full max-w-xs">
+            <div className="flex items-center justify-center w-10 h-10 bg-amber-50 rounded-xl mb-4">
+              <Question size={20} weight="duotone" className="text-amber-600" />
+            </div>
+            <h2 className="text-base font-semibold text-gray-800 mb-1">
+              Verify this customer?
+            </h2>
+            <p className="text-sm text-gray-400 mb-5">
+              This customer hasn't been verified yet. Would you like to send an
+              OTP to verify them now?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleConfirmNo}
+                className="flex-1 h-10 border border-gray-200 hover:bg-gray-50 text-gray-600
+                           text-sm rounded-lg transition-colors duration-150"
+              >
+                No, skip
+              </button>
+              <button
+                onClick={handleConfirmYes}
+                className="flex-1 h-10 bg-emerald-600 hover:bg-emerald-700 text-white
+                           text-sm font-medium rounded-lg transition-colors duration-150"
+              >
+                Yes, verify
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {otpModal && (

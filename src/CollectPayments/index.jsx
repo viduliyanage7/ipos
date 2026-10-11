@@ -13,6 +13,8 @@ const CollectPayment = (props) => {
   const [error, setError] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [receipt, setReceipt] = useState(null);
+  const [orderDetails, setOrderDetails] = useState(null);
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -35,7 +37,7 @@ const CollectPayment = (props) => {
     }
   };
 
-  const handleConfirmPayment = async (order, amountPaid) => {
+  const handleConfirmPayment = async (order, amountPaid, billItems = []) => {
     if (paymentLoading) {
       return;
     }
@@ -69,24 +71,36 @@ const CollectPayment = (props) => {
       const paymentResult = response.data.data;
 
       setSelectedOrder(null);
+      setOrderDetails(null);
+
+      const previousBalance =
+        Number(order.previous_balance) ||
+        Math.max(
+          (Number(order.previous_bill_total) || 0) -
+            (Number(order.previous_paid_total) || 0),
+          0,
+        );
 
       setReceipt({
         order,
+        items: billItems,
+        previousBalance,
         amountDue: Number(paymentResult?.amountDue) || amountDue,
         amountPaid: Number(paymentResult?.amountPaid) || paid,
-        balance:
-          Number(paymentResult?.balance) || Math.max(amountDue - paid, 0),
+        balance: Number.isFinite(Number(paymentResult?.balance))
+          ? Number(paymentResult.balance)
+          : amountDue - paid,
       });
 
       await fetchData();
     } catch (err) {
       console.error("Payment failed:", err);
-
       setError(
         err.response?.data?.message ||
           err.message ||
           "Failed to process payment.",
       );
+      throw err; // lets PaymentModal stop the spinner and show its own error
     } finally {
       setPaymentLoading(false);
     }
@@ -95,6 +109,25 @@ const CollectPayment = (props) => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Fetch the details first, then open the modal so it never renders
+  // with missing or stale data.
+  const handleCollectPayment = async (order) => {
+    setError(null);
+    setOrderDetails(null);
+
+    try {
+      const response = await axios.get(
+        `http://localhost:3002/api/collect-payment/order-details/${order.order_id}`,
+      );
+
+      setOrderDetails(response.data.data);
+      setSelectedOrder(order);
+    } catch (err) {
+      console.error("Error fetching order details:", err);
+      setError(err.response?.data?.message || "Couldn't load order details.");
+    }
+  };
 
   return (
     <div className="min-h-full bg-white">
@@ -190,7 +223,7 @@ const CollectPayment = (props) => {
 
                       <td className="px-5 py-3.5 text-right">
                         <button
-                          onClick={() => setSelectedOrder(order)}
+                          onClick={() => handleCollectPayment(order)}
                           disabled={paymentLoading}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -232,12 +265,14 @@ const CollectPayment = (props) => {
         )}
       </div>
 
-      {selectedOrder && (
+      {selectedOrder && orderDetails && (
         <PaymentModal
           order={selectedOrder}
+          orderDetails={orderDetails}
           onClose={() => {
             if (!paymentLoading) {
               setSelectedOrder(null);
+              setOrderDetails(null);
             }
           }}
           onConfirm={handleConfirmPayment}

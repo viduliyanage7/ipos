@@ -70,7 +70,7 @@ router.get("/product_price", async (req, res) => {
   try {
     const [rows] = await db.execute(
       `SELECT price from product_prices
-                WHERE pid = ? AND min_qty <= ? AND max_qty >= ?`,
+                WHERE pid = ? AND min_qty <= ? AND max_qty > ?`,
       [req.query.pid, req.query.qty, req.query.qty],
     );
     if (rows.length > 0) {
@@ -95,6 +95,26 @@ router.post("/generate-bill", async (req, res) => {
     return res.status(400).json({
       message: "Invalid request data",
     });
+  }
+  for (const item of items) {
+    if (!item.isCustom) continue;
+    const name = String(item.productName || "").trim();
+    const qty = Number(item.qty);
+    const price = Number(item.price);
+
+    if (!name || name.length > 45) {
+      return res
+        .status(400)
+        .json({ message: "Custom item name must be 1-45 characters" });
+    }
+    if (!Number.isInteger(qty) || qty < 1) {
+      return res
+        .status(400)
+        .json({ message: "Custom item quantity is invalid" });
+    }
+    if (!Number.isFinite(price) || price <= 0 || price > 99999.99) {
+      return res.status(400).json({ message: "Custom item price is invalid" });
+    }
   }
 
   try {
@@ -126,22 +146,37 @@ router.post("/generate-bill", async (req, res) => {
     );
 
     const billId = billResult.insertId;
+    let orderItemId = 1;
 
     for (const item of items) {
-      await db.execute(
-        `UPDATE products SET productStock = productStock - ? WHERE id = ?`,
-        [item.qty, item.id],
-      );
+      if (item.isCustom) {
+        await db.execute(
+          "INSERT INTO order_items_custom (order_item_id, order_id, product_name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)",
+          [
+            orderItemId,
+            billId,
+            String(item.productName).trim(),
+            item.qty,
+            item.price,
+          ],
+        );
+      } else {
+        await db.execute(
+          `UPDATE products SET productStock = productStock - ? WHERE id = ?`,
+          [item.qty, item.id],
+        );
 
-      await db.execute(
-        `INSERT INTO inventory_transactions (product_id,order_id,quantity,transaction_type) VALUES (?, ?, ?, ?)`,
-        [item.id, billId, item.qty, 1],
-      );
+        await db.execute(
+          `INSERT INTO inventory_transactions (product_id,order_id,quantity,transaction_type) VALUES (?, ?, ?, ?)`,
+          [item.id, billId, item.qty, 1],
+        );
 
-      await db.execute(
-        "INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)",
-        [billId, item.id, item.qty, item.price],
-      );
+        await db.execute(
+          "INSERT INTO order_items (order_item_id, order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?, ?)",
+          [orderItemId, billId, item.id, item.qty, item.price],
+        );
+        orderItemId++;
+      }
     }
 
     return res.json({

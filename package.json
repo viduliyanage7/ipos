@@ -1,0 +1,83 @@
+{
+  "name": "ipos",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "Electron/main.cjs",
+  "description": "i-POS",
+  "author": "Macxeon Technologies",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "dist": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.2.5",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.1.1",
+    "@phosphor-icons/react": "^2.1.10",
+    "antd": "^6.4.4",
+    "axios": "^1.17.0",
+    "lucide-react": "^1.25.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-icons": "^5.6.0",
+    "react-router-dom": "^7.17.0"
+  },
+  "build": {
+    "appId": "com.macxeon.iscale",
+    "extraFiles": [
+      {
+        "from": "Backend",
+        "to": "Backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "files": [
+      "dist/**/*",
+      "Electron/main.cjs",
+      "Electron/preload.cjs",
+      "public/icon.ico",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "nsis": {
+      "uninstallDisplayName": "iscale",
+      "license": "license.txt",
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    },
+    "directories": {
+      "output": "releases",
+      "buildResources": "dist"
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "vite": "^8.0.12"
+  }
+}
