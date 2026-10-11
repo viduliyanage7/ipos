@@ -83,7 +83,7 @@ router.get("/order-details/:orderID", async (req, res) => {
       FROM orders AS o
       WHERE o.customer_id = ?
         AND o.order_id < ?
-        AND o.status IN (1,2)
+        AND o.status IN (2)
       ORDER BY o.order_id ASC
       `,
       [order.customer_id, order.order_id],
@@ -97,7 +97,7 @@ router.get("/order-details/:orderID", async (req, res) => {
       INNER JOIN orders AS o ON o.order_id = p.order_id
       WHERE o.customer_id = ?
         AND o.order_id < ?
-        AND o.status IN (1,2)
+        AND o.status IN (2)
       `,
       [order.customer_id, order.order_id],
     );
