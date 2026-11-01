@@ -84,7 +84,7 @@ function startBackend() {
     : path.join(process.resourcesPath, "../Backend/index.js");
 
   backendProcess = spawn(process.execPath, [backendPath], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", IPOS_SETTINGS_PATH: path.join(app.getPath("userData"), "settings.json") },
     windowsHide: true,
   });
 

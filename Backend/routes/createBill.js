@@ -69,8 +69,14 @@ router.get("/product_price", async (req, res) => {
   }
   try {
     const [rows] = await db.execute(
-      `SELECT price from product_prices
-                WHERE pid = ? AND min_qty <= ? AND max_qty > ?`,
+      `
+        SELECT price
+        FROM product_prices
+        WHERE pid = ?
+        AND min_qty <= ?
+        AND (max_qty > ? OR max_qty IS NULL)
+        LIMIT 1
+`,
       [req.query.pid, req.query.qty, req.query.qty],
     );
     if (rows.length > 0) {
@@ -175,8 +181,8 @@ router.post("/generate-bill", async (req, res) => {
           "INSERT INTO order_items (order_item_id, order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?, ?)",
           [orderItemId, billId, item.id, item.qty, item.price],
         );
-        orderItemId++;
       }
+      orderItemId++;
     }
 
     return res.json({

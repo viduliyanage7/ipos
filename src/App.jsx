@@ -4,7 +4,12 @@ import Login from "./General/login";
 import Sidebar from "./Sidebar";
 import CreateBillSteps from "./General/steps";
 import Inventory from "./Pages/Inventory";
+import Orders from "./Pages/Orders";
+import SalesSummary from "./Pages/SalesSummary";
+import StockLog from "./Pages/StockLog";
+import Settings from "./Pages/Settings";
 import CollectPayment from "./CollectPayments/index";
+import PendingPayments from "./Pages/PendingPayments";
 
 const USER_ID_STORAGE_KEY = "userId";
 
@@ -80,6 +85,11 @@ function App() {
             path="/collect-payment"
             element={<CollectPayment userId={userId} />}
           />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/stock-log" element={<StockLog />} />
+          <Route path="/orders" element={<Orders />} />
+          <Route path="/sales-summary" element={<SalesSummary />} />
+          <Route path="/pending-payments" element={<PendingPayments userId={userId} setToast={setToast} />} />
           <Route
             path="/inventory"
             element={<Inventory setToast={setToast} />}

@@ -2,6 +2,128 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
+router.post("/delete-order", async (req, res) => {
+  const orderId = Number(req.body.order_id);
+  if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ message: "Invalid order ID." });
+  }
+  let connection;
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+    const [orders] = await connection.execute(
+      "SELECT order_id, status FROM orders WHERE order_id = ? FOR UPDATE", [orderId],
+    );
+    if (!orders.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Order not found." });
+    }
+    // Only entries still available on Collect Payment can be deleted here.
+    if (Number(orders[0].status) !== 1) {
+      await connection.rollback();
+      return res.status(409).json({ message: "This order has already been processed. Refresh the list." });
+    }
+    // Reverse the recorded stock deductions, including repeated product lines.
+    const [movements] = await connection.execute(
+      `SELECT product_id, quantity FROM inventory_transactions
+       WHERE order_id = ? AND transaction_type = 1 ORDER BY product_id FOR UPDATE`, [orderId],
+    );
+    for (const movement of movements) {
+      const [result] = await connection.execute(
+        "UPDATE products SET productStock = productStock + ? WHERE id = ?",
+        [movement.quantity, movement.product_id],
+      );
+      if (result.affectedRows !== 1) throw new Error("Cannot restore stock for a missing product.");
+    }
+    // Delete child records before their parent to respect foreign keys.
+    await connection.execute("DELETE FROM bank_transfers WHERE order_id = ?", [orderId]);
+    await connection.execute("DELETE FROM order_payments WHERE order_id = ?", [orderId]);
+    await connection.execute("DELETE FROM order_items_custom WHERE order_id = ?", [orderId]);
+    await connection.execute("DELETE FROM order_items WHERE order_id = ?", [orderId]);
+    await connection.execute("DELETE FROM inventory_transactions WHERE order_id = ?", [orderId]);
+    await connection.execute("DELETE FROM orders WHERE order_id = ?", [orderId]);
+    await connection.commit();
+    return res.json({ success: true, message: "Order deleted and stock restored." });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error("delete-order error:", error);
+    return res.status(500).json({ message: "Couldn't delete the order. No changes were saved." });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Pending balances are derived from recorded payments, regardless of status.
+router.get("/pending", async (req, res) => {
+  try {
+    const [rows] = await db.execute(`
+      SELECT o.order_id, o.order_number, o.customer_id, o.created_at,
+        o.total AS bill_total, c.name AS customer_name,
+        c.phone_number AS customer_phone,
+        COALESCE(p.paid_amount, 0) AS paid_amount,
+        o.total - COALESCE(p.paid_amount, 0) AS outstanding_amount
+      FROM orders o
+      LEFT JOIN customers c ON c.id = o.customer_id
+      LEFT JOIN (
+        SELECT order_id, SUM(amount) AS paid_amount
+        FROM order_payments GROUP BY order_id
+      ) p ON p.order_id = o.order_id
+      WHERE o.total > COALESCE(p.paid_amount, 0)
+      ORDER BY o.created_at ASC, o.order_id ASC
+    `);
+    return res.json({ success: true, rows });
+  } catch (error) {
+    console.error("pending orders error:", error);
+    return res.status(500).json({ message: "Failed to load pending payments." });
+  }
+});
+
+// Settle only the selected order; the existing collection flow allocates oldest first.
+router.post("/settle-pending", async (req, res) => {
+  const { order_id, payment, userId } = req.body;
+  const amount = Number(payment);
+  const cents = Math.round(amount * 100);
+  if (!Number.isSafeInteger(Number(order_id)) || Number(order_id) <= 0 ||
+      !userId || !Number.isFinite(amount) || cents <= 0 ||
+      !Number.isSafeInteger(cents) || Math.abs(amount * 100 - cents) > 0.000001) {
+    return res.status(400).json({ message: "Enter a valid order, user and payment amount (up to two decimal places)." });
+  }
+  let connection;
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+    // Serialize settlements on this order before reading its payment balance.
+    const [orders] = await connection.execute(
+      "SELECT total FROM orders WHERE order_id = ? FOR UPDATE", [order_id],
+    );
+    if (!orders.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Order not found." });
+    }
+    const [[paid]] = await connection.execute(
+      "SELECT COALESCE(SUM(amount), 0) AS paid_amount FROM order_payments WHERE order_id = ?", [order_id],
+    );
+    const outstanding = Math.round(Number(orders[0].total) * 100) - Math.round(Number(paid.paid_amount) * 100);
+    if (cents > outstanding) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Payment exceeds the current outstanding balance. Refresh and try again." });
+    }
+    await connection.execute(
+      "INSERT INTO order_payments (order_id, payment_method, amount, user_id) VALUES (?, ?, ?, ?)",
+      [order_id, 1, cents / 100, userId],
+    );
+    await connection.execute("UPDATE orders SET status = ? WHERE order_id = ?", [cents === outstanding ? 3 : 2, order_id]);
+    await connection.commit();
+    return res.json({ success: true, balance: (outstanding - cents) / 100 });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error("settle-pending error:", error);
+    return res.status(500).json({ message: "Failed to save payment." });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 router.get("/fetch-all", async (req, res) => {
   try {
     const [rows] = await db.execute(`
@@ -72,7 +194,7 @@ router.get("/order-details/:orderID", async (req, res) => {
 
     const order = orderRows[0];
 
-    // Previous unsettled bills for this customer (oldest first)
+    // Include both unpaid and partially paid previous bills, matching payment allocation.
     const [previousBills] = await db.execute(
       `
       SELECT
@@ -83,7 +205,7 @@ router.get("/order-details/:orderID", async (req, res) => {
       FROM orders AS o
       WHERE o.customer_id = ?
         AND o.order_id < ?
-        AND o.status IN (2)
+        AND o.status <> 3
       ORDER BY o.order_id ASC
       `,
       [order.customer_id, order.order_id],
@@ -97,7 +219,7 @@ router.get("/order-details/:orderID", async (req, res) => {
       INNER JOIN orders AS o ON o.order_id = p.order_id
       WHERE o.customer_id = ?
         AND o.order_id < ?
-        AND o.status IN (2)
+        AND o.status <> 3
       `,
       [order.customer_id, order.order_id],
     );
@@ -138,7 +260,12 @@ router.get("/order-details/:orderID", async (req, res) => {
 });
 
 router.post("/complete-payment", async (req, res) => {
-  const { order_id, customer_id, payment, userId } = req.body;
+  const { order_id, customer_id, payment, userId, payment_method = "cash", reference_number } = req.body;
+  const isBankTransfer = payment_method === "bank_transfer";
+  if (!["cash", "bank_transfer"].includes(payment_method) ||
+      (isBankTransfer && (typeof reference_number !== "string" || !/^\d{1,12}$/.test(reference_number)))) {
+    return res.status(400).json({ success: false, message: "Choose a valid payment method and enter a bank reference of 1–12 digits." });
+  }
 
   if (!order_id || !customer_id || payment == null) {
     return res.status(400).json({
@@ -149,23 +276,27 @@ router.post("/complete-payment", async (req, res) => {
 
   const paymentAmount = Number(payment);
 
-  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+  // 0 is allowed (customer pays nothing now; the order becomes unsettled)
+  if (!Number.isFinite(paymentAmount) || paymentAmount < 0 || !Number.isSafeInteger(Math.round(paymentAmount * 100)) || Math.abs(paymentAmount * 100 - Math.round(paymentAmount * 100)) > 0.000001) {
     return res.status(400).json({
       success: false,
       message: "Invalid payment amount.",
     });
   }
 
-  const connection = await db.getConnection();
-
+  if (isBankTransfer && paymentAmount <= 0) {
+    return res.status(400).json({ success: false, message: "Bank transfer amount must be greater than zero." });
+  }
+  let connection;
   try {
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
     /*
      * Get all outstanding bills for this customer,
      * starting from the oldest bill.
      *
-     * We calculate the outstanding amount using
+     * The outstanding amount is calculated from the
      * payments already recorded for each order.
      */
     const [orders] = await connection.execute(
@@ -215,94 +346,90 @@ router.post("/complete-payment", async (req, res) => {
       });
     }
 
-    let remainingPayment = paymentAmount;
+    const amountDueCents = orders.reduce((sum, order) => sum + Math.round(Number(order.outstanding_amount) * 100), 0);
+    if (isBankTransfer && Math.round(paymentAmount * 100) > amountDueCents) {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "Bank transfers cannot exceed the outstanding amount. Change is available for cash payments only." });
+    }
+    let remainingPayment = Math.round(paymentAmount * 100);
 
     for (const order of orders) {
-      if (remainingPayment <= 0) {
-        break;
-      }
-
-      const orderTotal = Number(order.total);
-      const alreadyPaid = Number(order.paid_amount);
-      const outstanding = Number(order.outstanding_amount);
+      const orderTotal = Math.round(Number(order.total) * 100);
+      const alreadyPaid = Math.round(Number(order.paid_amount) * 100);
+      const outstanding = Math.round(Number(order.outstanding_amount) * 100);
 
       /*
-       * How much of this payment should go
-       * toward this particular bill?
+       * How much of this payment goes toward this bill.
+       * This is 0 when the customer paid 0, or when the
+       * payment has already been used up on older bills.
        */
       const paymentForOrder = Math.min(remainingPayment, outstanding);
 
       /*
-       * Record the actual payment.
-       *
-       * This is important for partial payments.
+       * Only record real payments (no zero-amount rows).
        */
-      await connection.execute(
-        `
-        INSERT INTO order_payments
-          (
-            order_id,
-            payment_method,
-            amount,
-            user_id
-          )
-        VALUES (?, ?, ?, ?)
-        `,
-        [order.order_id, 1, paymentForOrder, userId],
-      );
+      if (paymentForOrder > 0) {
+        const [paymentResult] = await connection.execute(
+          `
+          INSERT INTO order_payments
+            (
+              order_id,
+              payment_method,
+              amount,
+              user_id
+            )
+          VALUES (?, ?, ?, ?)
+          `,
+          [order.order_id, isBankTransfer ? 2 : 1, paymentForOrder / 100, userId],
+        );
+        if (isBankTransfer) {
+          await connection.execute(
+            `INSERT INTO bank_transfers (payment_id, order_id, customer_id, reference_number, amount, user_id)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [paymentResult.insertId, order.order_id, customer_id, reference_number, paymentForOrder / 100, userId],
+          );
+        }
+      }
 
       const newPaidAmount = alreadyPaid + paymentForOrder;
 
       /*
-       * Fully paid
+       * 3 = fully paid
+       * 2 = unsettled (partially paid, or nothing paid yet)
+       *
+       * Every order in the loop is updated, so the current
+       * order always leaves status 1 and drops off the list.
        */
-      if (newPaidAmount >= orderTotal) {
-        await connection.execute(
-          `
-          UPDATE orders
-          SET status = 3
-          WHERE order_id = ?
-          `,
-          [order.order_id],
-        );
-      } else {
-        /*
-         * Partially paid
-         */
-        await connection.execute(
-          `
-          UPDATE orders
-          SET status = 2
-          WHERE order_id = ?
-          `,
-          [order.order_id],
-        );
-      }
+      await connection.execute(
+        `
+        UPDATE orders
+        SET status = ?
+        WHERE order_id = ?
+        `,
+        [newPaidAmount >= orderTotal ? 3 : 2, order.order_id],
+      );
 
       remainingPayment -= paymentForOrder;
     }
 
-    /*
-     * If the customer paid more than all outstanding
-     * bills, don't silently lose the extra money.
-     */
-    if (remainingPayment > 0) {
-      await connection.rollback();
-
-      return res.status(400).json({
-        success: false,
-        message: "Payment exceeds the total outstanding amount.",
-      });
-    }
-
+    // Any cash left after settling the bills is returned to the customer as change.
     await connection.commit();
 
     return res.json({
       success: true,
       message: "Payment completed successfully.",
+      data: {
+        paymentMethod: payment_method,
+        referenceNumber: isBankTransfer ? reference_number : null,
+        amountDue: amountDueCents / 100,
+        amountPaid: paymentAmount,
+        amountApplied: (Math.round(paymentAmount * 100) - remainingPayment) / 100,
+        change: remainingPayment / 100,
+        balance: (amountDueCents - Math.round(paymentAmount * 100)) / 100,
+      },
     });
   } catch (err) {
-    await connection.rollback();
+    if (connection) await connection.rollback();
 
     console.error("complete-payment error:", err);
 
@@ -311,7 +438,7 @@ router.post("/complete-payment", async (req, res) => {
       message: "Failed to complete payment.",
     });
   } finally {
-    connection.release();
+    if (connection) connection.release();
   }
 });
 

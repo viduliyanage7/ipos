@@ -2,6 +2,37 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
+router.get("/stock-log", async (req, res) => {
+  const { from = "", to = "" } = req.query;
+  const validDate = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  if ((from !== "" && !validDate(from)) || (to !== "" && !validDate(to)) || (from && to && from > to)) {
+    return res.status(400).json({ message: "Select a valid date range. From date must be on or before To date." });
+  }
+  const conditions = ["t.transaction_type = 3"];
+  const params = [];
+  if (from) { conditions.push("t.transaction_date >= ?"); params.push(from); }
+  if (to) { conditions.push("t.transaction_date < DATE_ADD(?, INTERVAL 1 DAY)"); params.push(to); }
+  try {
+    const [rows] = await db.execute(`
+      SELECT t.transaction_id, t.product_id, t.quantity, t.transaction_date,
+        p.productName AS product_name, pc.name AS category_name,
+        tt.type AS transaction_type
+      FROM inventory_transactions t
+      LEFT JOIN products p ON p.id = t.product_id
+      LEFT JOIN product_categories pc ON pc.id = p.c_id
+      LEFT JOIN inventory_transaction_types tt ON tt.id = t.transaction_type
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY t.transaction_date DESC, t.transaction_id DESC
+      ${from || to ? "" : "LIMIT 25"}
+    `, params);
+    return res.json({ rows });
+  } catch (error) {
+    console.error("stock-log error:", error);
+    return res.status(500).json({ message: "Couldn't load stock additions." });
+  }
+});
+
 router.post("/add", async (req, res) => {
   const { product_id, quantity } = req.body;
 

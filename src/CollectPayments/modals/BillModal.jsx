@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { X, Receipt, CheckCircle2, Printer } from "lucide-react";
 import { formatDate, formatCurrency } from "./formatters";
 import { buildReceiptHtml } from "./receiptTemplate";
@@ -25,7 +25,7 @@ const BillModal = ({ receipt, onClose }) => {
             : "Print failed. Check the printer connection.",
         );
       }
-    } catch (err) {
+    } catch {
       setPrintError("Could not reach the printer service.");
     } finally {
       setPrinting(false);
@@ -64,6 +64,7 @@ const BillModal = ({ receipt, onClose }) => {
           </button>
         </div>
 
+        {receipt.paymentMethod === "bank_transfer" && <div className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800"><p>Bank transfer</p><p className="mt-1">Reference: {receipt.referenceNumber}</p></div>}
         {/* Bill details */}
         <div className="mt-7 flex items-center gap-2 border-b border-dashed border-slate-200 pb-4">
           <Receipt className="h-4 w-4 text-slate-400" />

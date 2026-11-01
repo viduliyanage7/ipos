@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { X, Wallet } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, Wallet, Banknote, Landmark, Check, ChevronDown } from "lucide-react";
 import { formatCurrency, formatDate } from "./formatters";
 import axios from "axios";
 
-const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
+const PaymentModal = ({ orderDetails, onClose, onConfirm, settlement = false }) => {
   const [amount, setAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [reference, setReference] = useState("");
+  const isBankTransfer = !settlement && paymentMethod === "bank_transfer";
   const [submitting, setSubmitting] = useState(false);
   const [billItems, setBillItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(true);
@@ -34,11 +37,10 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
 
   const amountPaid = Number.parseFloat(amount);
 
-  // Backend rejects payments <= 0, so require > 0 here too
   const hasValidAmount =
-    amount !== "" && !Number.isNaN(amountPaid) && amountPaid > 0;
+    amount !== "" && Number.isFinite(amountPaid) && (settlement ? amountPaid > 0 : amountPaid >= 0);
 
-  const balance = hasValidAmount ? amountDue - amountPaid : null;
+  const balance = hasValidAmount ? (Math.round(amountDue * 100) - Math.round(amountPaid * 100)) / 100 : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,21 +50,25 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
       return;
     }
 
-    if (amountPaid > amountDue) {
+    if ((settlement || isBankTransfer) && amountPaid > amountDue) {
       setError(
         `Payment cannot exceed the amount due of ${formatCurrency(amountDue)}.`,
       );
       return;
     }
 
+    if (isBankTransfer && (!/^\d{1,12}$/.test(reference) || amountPaid <= 0)) {
+      setError("Enter a bank reference of 1–12 digits and a positive transfer amount.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
 
     try {
-      await onConfirm(orderDetails, amountPaid, billItems);
+      await onConfirm(orderDetails, amountPaid, billItems, { payment_method: paymentMethod, reference_number: isBankTransfer ? reference : undefined });
     } catch (err) {
       console.error("Error collecting payment:", err);
-      setError("Couldn't save the payment. Try again.");
+      setError(err.response?.data?.message || err.message || "Couldn't save the payment. Try again.");
       setSubmitting(false);
     }
   };
@@ -224,18 +230,19 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
 
           {/* Previous balance */}
           {previousBalance > 0 && (
-            <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-              <div className="flex items-center justify-between">
+            <details key={orderDetails.order_id} className="group mt-4 rounded-xl border border-amber-100 bg-amber-50">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-amber-500 [&::-webkit-details-marker]:hidden">
                 <span className="text-sm font-medium text-amber-700">
                   Previous balance
                 </span>
-                <span className="text-sm font-bold tabular-nums text-amber-800">
+                <span className="flex items-center gap-3 text-sm font-bold tabular-nums text-amber-800">
                   {formatCurrency(previousBalance)}
+                  <ChevronDown size={16} aria-hidden="true" className="shrink-0 transition-transform group-open:rotate-180" />
                 </span>
-              </div>
+              </summary>
 
               {previousBillTotal > 0 && (
-                <div className="mt-2 space-y-1 border-t border-amber-200/60 pt-2 text-xs tabular-nums text-amber-700">
+                <div className="mx-4 space-y-1 border-t border-amber-200/60 py-3 text-xs tabular-nums text-amber-700">
                   <div className="max-h-28 space-y-1 overflow-y-auto">
                     {previousBills.length > 0 ? (
                       previousBills.map((bill) => (
@@ -263,8 +270,10 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
                   )}
                 </div>
               )}
-            </div>
+            </details>
           )}
+
+          {settlement && <div className="mt-4 flex justify-between text-sm text-slate-600"><span>Already paid on this order</span><span>{formatCurrency(orderDetails.paid_amount)}</span></div>}
 
           {/* Total amount due */}
           <div className="mt-4 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-4">
@@ -282,6 +291,37 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
           onSubmit={handleSubmit}
           className="border-t border-slate-100 bg-white px-6 py-5"
         >
+          {!settlement && <fieldset disabled={submitting} className="mb-4">
+            <legend className="mb-2 text-sm font-medium text-slate-700">Payment method</legend>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { value: "cash", label: "Cash", icon: Banknote },
+                { value: "bank_transfer", label: "Bank transfer", icon: Landmark },
+              ].map(({ value, label, icon: Icon }) => (
+                <label key={value} className="relative cursor-pointer">
+                  <input type="radio" name="payment-method" value={value} checked={paymentMethod === value}
+                    onChange={() => { setPaymentMethod(value); setError(null); }}
+                    className="peer sr-only" />
+                  <span className="flex h-14 items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-emerald-300 peer-checked:border-emerald-600 peer-checked:bg-emerald-50 peer-checked:text-emerald-800 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500 peer-focus-visible:ring-offset-2 peer-disabled:cursor-not-allowed peer-disabled:opacity-60">
+                    <Icon size={20} className="shrink-0" aria-hidden="true" />
+                    <span className="flex-1">{label}</span>
+                    <span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${paymentMethod === value ? "bg-emerald-600 text-white" : "border border-slate-300"}`}>
+                      {paymentMethod === value && <Check size={11} strokeWidth={3} />}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="relative mt-3">
+            <label aria-hidden={!isBankTransfer} className={`block text-sm font-medium text-slate-700 ${isBankTransfer ? "" : "invisible"}`}>Reference number
+              <input required={isBankTransfer} disabled={!isBankTransfer || submitting} type="text" inputMode="numeric" pattern="[0-9]{1,12}" maxLength={12} value={reference} onChange={e => { setReference(e.target.value.replace(/\D/g, "").slice(0, 12)); setError(null); }} placeholder="Up to 12 digits" className="mt-2 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" />
+            </label>
+            {!isBankTransfer && <div className="absolute inset-0 flex items-center gap-3 rounded-lg bg-slate-50 px-3 text-xs leading-relaxed text-slate-500">
+              <Banknote size={18} className="shrink-0 text-slate-400" aria-hidden="true" />
+              <p>Enter the cash received below. Any change will be calculated automatically.</p>
+            </div>}
+            </div>
+          </fieldset>}
           <label
             htmlFor="amount-paid"
             className="block text-sm font-medium text-slate-700"
@@ -289,12 +329,15 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
             Amount paid by customer
           </label>
 
+          {settlement && <button type="button" disabled={submitting} onClick={() => setAmount(amountDue.toFixed(2))} className="mt-2 text-sm font-medium text-emerald-600 hover:text-emerald-700">Pay full balance</button>}
+
           <input
+            disabled={submitting}
             id="amount-paid"
             type="number"
             step="0.01"
-            min="0"
-            max={amountDue}
+            min={settlement || isBankTransfer ? "0.01" : "0"}
+            max={settlement || isBankTransfer ? amountDue : undefined}
             autoFocus
             value={amount}
             onChange={(e) => {
@@ -306,14 +349,15 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
           />
 
           {/* Remaining balance */}
-          {hasValidAmount && (
+          <div className="mt-3 flex h-16 items-center" aria-live="polite" aria-atomic="true">
+          {hasValidAmount ? (
             <div
-              className={`mt-3 rounded-xl px-4 py-3 text-sm ${
+              className={`max-h-full w-full overflow-y-auto rounded-xl px-4 py-3 text-sm ${
                 balance > 0
                   ? "border border-amber-200 bg-amber-50 text-amber-700"
                   : balance === 0
                     ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border border-red-200 bg-red-50 text-red-700"
+                    : settlement || isBankTransfer ? "border border-red-200 bg-red-50 text-red-700" : "border border-emerald-200 bg-emerald-50 text-emerald-700"
               }`}
             >
               {balance > 0 ? (
@@ -329,17 +373,20 @@ const PaymentModal = ({ orderDetails, onClose, onConfirm }) => {
                 </span>
               ) : (
                 <span className="font-semibold">
-                  Payment exceeds the amount due.
+                  {settlement || isBankTransfer ? "Payment exceeds the amount due." : `${formatCurrency(Math.abs(balance))} change to return to customer.`}
                 </span>
               )}
             </div>
-          )}
+          ) : <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+            Enter an amount to see the {settlement || isBankTransfer ? "remaining balance" : "remaining balance or change"}.
+          </div>}
+          </div>
 
           {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
 
           <button
             type="submit"
-            disabled={submitting || !hasValidAmount || amountPaid > amountDue}
+            disabled={submitting || !hasValidAmount}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Saving…" : "Confirm payment"}

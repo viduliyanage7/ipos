@@ -13,6 +13,9 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+app.use("/api/settings", require("./routes/settings"));
+app.use("/api/orders", require("./routes/orders"));
+app.use("/api/sales-summary", require("./routes/salesSummary"));
 app.use("/api/", general);
 app.use("/api/create-bill/", createBill);
 app.use("/api/inventory/", inventory);

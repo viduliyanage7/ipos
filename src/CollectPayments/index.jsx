@@ -1,6 +1,6 @@
 import axios from "axios";
-import React, { useEffect, useState } from "react";
-import { RefreshCw, Inbox, Wallet } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { RefreshCw, Inbox, Wallet, Trash2 } from "lucide-react";
 import { formatDate, formatCurrency } from "./modals/formatters";
 import PaymentModal from "./modals/PaymentModal";
 import BillModal from "./modals/BillModal";
@@ -14,6 +14,29 @@ const CollectPayment = (props) => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [orderDetails, setOrderDetails] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const deleting = useRef(false);
+
+  const handleDeleteOrder = async (order) => {
+    if (deleting.current || paymentLoading) return;
+    if (!window.confirm(
+      `Delete order ${order.order_number}?\n\nThis will restore its stock and permanently delete the order and its related items, payments, bank transfers, and inventory transactions. This cannot be undone.`,
+    )) return;
+    deleting.current = true;
+    setDeletingId(order.order_id);
+    setError(null);
+    try {
+      await axios.post("http://localhost:3002/api/collect-payment/delete-order", {
+        order_id: order.order_id,
+      });
+      await fetchData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Couldn't delete the order. Try again.");
+    } finally {
+      deleting.current = false;
+      setDeletingId(null);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -37,7 +60,7 @@ const CollectPayment = (props) => {
     }
   };
 
-  const handleConfirmPayment = async (order, amountPaid, billItems = []) => {
+  const handleConfirmPayment = async (order, amountPaid, billItems = [], paymentDetails = {}) => {
     if (paymentLoading) {
       return;
     }
@@ -65,6 +88,7 @@ const CollectPayment = (props) => {
           payment: paid || 0,
           amountDue: amountDue,
           userId: userId,
+          ...paymentDetails,
         },
       );
 
@@ -83,6 +107,8 @@ const CollectPayment = (props) => {
 
       setReceipt({
         order,
+        paymentMethod: paymentResult?.paymentMethod || paymentDetails.payment_method || "cash",
+        referenceNumber: paymentResult?.referenceNumber || paymentDetails.reference_number,
         items: billItems,
         previousBalance,
         amountDue: Number(paymentResult?.amountDue) || amountDue,
@@ -107,7 +133,14 @@ const CollectPayment = (props) => {
   };
 
   useEffect(() => {
-    fetchData();
+    const controller = new AbortController();
+    axios.get("http://localhost:3002/api/collect-payment/fetch-all", { signal: controller.signal })
+      .then(response => setOrders(response.data.rows || []))
+      .catch(err => {
+        if (!controller.signal.aborted) setError(err.response?.data?.message || "Couldn't load orders. Check your connection and try again.");
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
 
   // Fetch the details first, then open the modal so it never renders
@@ -146,7 +179,7 @@ const CollectPayment = (props) => {
 
           <button
             onClick={fetchData}
-            disabled={loading || paymentLoading}
+            disabled={loading || paymentLoading || deletingId !== null}
             className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -224,11 +257,21 @@ const CollectPayment = (props) => {
                       <td className="px-5 py-3.5 text-right">
                         <button
                           onClick={() => handleCollectPayment(order)}
-                          disabled={paymentLoading}
+                          disabled={paymentLoading || deletingId !== null}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Wallet className="h-3.5 w-3.5" />
                           Collect Payment
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOrder(order)}
+                          disabled={paymentLoading || deletingId !== null}
+                          aria-label={`Delete order ${order.order_number}`}
+                          title="Delete order and restore its stock"
+                          className="ml-2 inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {deletingId === order.order_id ? "Deleting…" : "Delete"}
                         </button>
                       </td>
                     </tr>

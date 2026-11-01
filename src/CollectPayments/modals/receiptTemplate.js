@@ -44,7 +44,7 @@ export function buildReceiptHtml(receipt, businessInfo = {}) {
   const time = when.toLocaleTimeString();
   const dateStr = `${when.getDate()}/${String(when.getMonth() + 1).padStart(2, "0")}/${when.getFullYear()}`;
 
-  const headRow = `<tr class="mrow">${cell("th", p6("Item"), { head: true })}${cell("th", p6("Quantity"), { head: true, right: true })}${cell("th", p6("Price"), { head: true, right: true })}${cell("th", p6("Total"), { head: true, right: true })}${cell("th", "", { head: true, right: true })}</tr>`;
+  const headRow = `<tr class="mrow">${cell("th", p6("Item"), { head: true })}${cell("th", p6("QTY"), { head: true, right: true })}${cell("th", p6("Price"), { head: true, right: true })}${cell("th", p6("Total"), { head: true, right: true })}${cell("th", "", { head: true, right: true })}</tr>`;
 
   const itemRows = items
     .map((item) => {
@@ -158,7 +158,7 @@ export function buildReceiptHtml(receipt, businessInfo = {}) {
 <center><div class="customerdetailsprint"><div><div class="customerdetailsdiv"><p6>Name: </p6><p6>${esc(order.customer_name)}</p6></div><br /><div class="customerdetailsdiv"><p6>Time: </p6><p6>${esc(time)}</p6></div><br /></div><div class="customerdetailsprintsub"><div class="customerdetailsdiv"><p6>Tel:</p6><p6>${esc(order.customer_phone)}</p6></div><div class="customerdetailsdiv"><p6>Date: </p6><p6>${esc(dateStr)}</p6></div></div></div></center>
 <div class="tcontainer tablestyle">
 <table class="mtable table" aria-label="simple table"><thead>${headRow}</thead><tbody>${itemRows}</tbody>${freeBody}</table>
-<div class="tbrow">${totalRow("Total:", num(amountDue))}${totalRow("Payment:", num(amountPaid))}${totalRow("Balance:", num(Math.abs(Number(balance) || 0)))}</div>
+<div class="tbrow">${totalRow("Total:", num(amountDue))}${totalRow("Payment:", num(amountPaid))}${receipt.paymentMethod === "bank_transfer" ? totalRow("Bank reference:", esc(receipt.referenceNumber)) : ""}${totalRow(Number(balance) < 0 ? "Change:" : "Balance:", num(Math.abs(Number(balance) || 0)))}</div>
 </div><br /><br /><br /><br />
 <div class="footer"><br /><br />
 <div class="customerdetailsprintsub"><div class="customerdetailsdiv"><p7>Ship To: </p7><p7>${esc(order.location)}</p7></div></div>

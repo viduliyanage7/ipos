@@ -1,6 +1,8 @@
 import React, { useRef, useState } from "react";
-import { Form, Input, message } from "antd";
+import { Form, Input, Modal, message } from "antd";
 import axios from "axios";
+import Settings from "../Pages/Settings";
+import { Database } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { EyeInvisibleOutlined, EyeTwoTone } from "@ant-design/icons";
 
@@ -28,6 +30,7 @@ const Login = (props) => {
   const { setUserId } = props;
   const [messageApi, contextHolder] = message.useMessage();
   const [submitting, setSubmitting] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
   const passwordInputRef = useRef(null);
   const formRef = useRef(null);
@@ -43,7 +46,7 @@ const Login = (props) => {
       } else {
         showError();
       }
-    } catch (error) {
+    } catch {
       showError();
     } finally {
       setSubmitting(false);
@@ -146,6 +149,12 @@ const Login = (props) => {
             {submitting ? "Signing in..." : "Sign in"}
           </button>
         </Form>
+        <button type="button" onClick={() => setSettingsOpen(true)} className="mt-6 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700">
+          <Database size={16} />Database settings
+        </button>
+        <Modal title="Database settings" open={settingsOpen} onCancel={() => setSettingsOpen(false)} footer={null} destroyOnHidden centered width={560}>
+          {settingsOpen && <Settings embedded />}
+        </Modal>
       </div>
 
       {/* Right panel — full-height image */}
